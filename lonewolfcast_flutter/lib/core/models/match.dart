@@ -1,4 +1,5 @@
 import 'package:intl/intl.dart';
+import 'package:lonewolfcast_flutter/core/models/prediction.dart';
 
 class Match {
   final Fixture fixture;
@@ -6,6 +7,7 @@ class Match {
   final Teams teams;
   final Goals? goals;
   final Score? score;
+  PredictionDetails? prediction;
 
   Match({
     required this.fixture,
@@ -13,6 +15,7 @@ class Match {
     required this.teams,
     this.goals,
     this.score,
+    this.prediction,
   });
 
   factory Match.fromJson(Map<String, dynamic> json) {

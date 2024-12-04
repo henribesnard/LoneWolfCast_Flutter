@@ -4,12 +4,11 @@ import 'package:lonewolfcast_flutter/features/home/screens/home_screen.dart';
 import 'package:lonewolfcast_flutter/features/bankroll/screens/bankroll_screen.dart';
 import 'package:lonewolfcast_flutter/features/settings/screens/settings_screen.dart';
 import 'package:lonewolfcast_flutter/core/config/env_config.dart';
+import 'package:lonewolfcast_flutter/features/home/navigation/match_navigation.dart';  // Ajouté
 
 Future<void> main() async {
-  // S'assurer que les widgets Flutter sont initialisés
   WidgetsFlutterBinding.ensureInitialized();
   
-  // Charger les variables d'environnement
   try {
     await EnvConfig.load();
     print('Environnement chargé avec succès');
@@ -27,8 +26,10 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
+      onGenerateRoute: MatchNavigation.onGenerateRoute,  // Utilisé maintenant que l'import est présent
+      navigatorKey: GlobalKey<NavigatorState>(),  // Ajouté pour la navigation globale
       title: 'LoneWolfCast',
-      debugShowCheckedModeBanner: false, // Supprime le bandeau debug
+      debugShowCheckedModeBanner: false,
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(
           seedColor: const Color(0xFF1E88E5),
@@ -43,7 +44,7 @@ class MyApp extends StatelessWidget {
         ),
         useMaterial3: true,
       ),
-      themeMode: ThemeMode.system, // Suit le thème du système
+      themeMode: ThemeMode.system,
       home: const MainScreen(),
     );
   }

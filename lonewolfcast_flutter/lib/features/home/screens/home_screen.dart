@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 import 'package:lonewolfcast_flutter/core/models/match.dart';
-import 'package:lonewolfcast_flutter/services/api/api_service.dart';
-import 'package:lonewolfcast_flutter/core/utils/translations.dart';
+import 'package:lonewolfcast_flutter/features/home/navigation/match_navigation.dart';
+import 'package:lonewolfcast_flutter/features/home/widgets/match_card.dart';
+import 'package:lonewolfcast_flutter/services/api/matches_service.dart';
+import 'package:lonewolfcast_flutter/services/api/predictions_service.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -12,7 +13,9 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  final ApiFootballService _apiService = ApiFootballService();
+  final _matchesService = MatchesService();
+  final _predictionsService = PredictionsService();
+  
   List<Match> _liveMatches = [];
   List<Match> _upcomingMatches = [];
   bool _isLoading = true;
@@ -24,30 +27,62 @@ class _HomeScreenState extends State<HomeScreen> {
     _loadMatches();
   }
 
-  Future<void> _loadMatches() async {
-    try {
-      setState(() {
-        _isLoading = true;
-        _error = null;
-      });
-
-      final matches = await _apiService.getTodayMatches();
-      final allMatches = matches.map((m) => Match.fromJson(m)).toList();
-
-      setState(() {
-        _liveMatches = allMatches.where((m) => m.isLive).toList();
-        _upcomingMatches = allMatches.where((m) => m.isUpcoming).toList();
-        _isLoading = false;
-      });
-      
-    } catch (e) {
-      setState(() {
-        _error = e.toString();
-        _isLoading = false;
-      });
-      print('Error loading matches: $e');
-    }
+  @override
+  void dispose() {
+    _matchesService.dispose();
+    _predictionsService.dispose();
+    super.dispose();
   }
+
+Future<void> _loadMatches() async {
+  try {
+    setState(() {
+      _isLoading = true;
+      _error = null;
+    });
+
+    // Récupération des matchs
+    final matches = await _matchesService.getTodayMatches();
+    print('Récupération réussie de ${matches.length} matchs');
+
+    // Traitement sécurisé des matchs
+    final processedMatches = <Match>[];
+    
+    for (var matchData in matches) {
+      try {
+        // Vérification et traitement de chaque match individuellement
+        final match = Match.fromJson(matchData);
+        print('Traitement réussi du match: ${match.teams.home.name} vs ${match.teams.away.name}');
+        processedMatches.add(match);
+      } catch (e) {
+        print('Erreur lors du traitement d\'un match: $e');
+        // Continue avec le prochain match au lieu d'arrêter le processus
+        continue;
+      }
+    }
+
+    print('Matches traités avec succès: ${processedMatches.length}');
+
+    // Mise à jour de l'état
+    setState(() {
+      _liveMatches = processedMatches.where((m) => m.isLive).toList();
+      _upcomingMatches = processedMatches.where((m) => m.isUpcoming).toList();
+      _isLoading = false;
+    });
+
+    print('État mis à jour - Matchs en direct: ${_liveMatches.length}, Matchs à venir: ${_upcomingMatches.length}');
+
+  } catch (e, stackTrace) {
+    print('Erreur lors du chargement des matchs:');
+    print('Error: $e');
+    print('Stack trace: $stackTrace');
+    
+    setState(() {
+      _error = 'Erreur lors du chargement des matchs';
+      _isLoading = false;
+    });
+  }
+}
 
   @override
   Widget build(BuildContext context) {
@@ -73,7 +108,14 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget _buildBody() {
     if (_isLoading) {
       return const Center(
-        child: CircularProgressIndicator(),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            CircularProgressIndicator(),
+            SizedBox(height: 16),
+            Text('Chargement des matchs...'),
+          ],
+        ),
       );
     }
 
@@ -94,9 +136,10 @@ class _HomeScreenState extends State<HomeScreen> {
               style: const TextStyle(color: Colors.red),
             ),
             const SizedBox(height: 16),
-            ElevatedButton(
+            ElevatedButton.icon(
               onPressed: _loadMatches,
-              child: const Text('Réessayer'),
+              icon: const Icon(Icons.refresh),
+              label: const Text('Réessayer'),
             ),
           ],
         ),
@@ -104,10 +147,30 @@ class _HomeScreenState extends State<HomeScreen> {
     }
 
     if (_liveMatches.isEmpty && _upcomingMatches.isEmpty) {
-      return const Center(
-        child: Text(
-          'Aucun match aujourd\'hui',
-          style: TextStyle(fontSize: 16),
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.sports_soccer,
+              size: 48,
+              color: Colors.grey[400],
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'Aucun match aujourd\'hui',  // Modifié pour refléter l'absence de matchs en général
+              style: TextStyle(
+                fontSize: 16,
+                color: Colors.grey[600],
+              ),
+            ),
+            const SizedBox(height: 16),
+            ElevatedButton.icon(
+              onPressed: _loadMatches,
+              icon: const Icon(Icons.refresh),
+              label: const Text('Actualiser'),
+            ),
+          ],
         ),
       );
     }
@@ -119,12 +182,12 @@ class _HomeScreenState extends State<HomeScreen> {
         children: [
           if (_liveMatches.isNotEmpty) ...[
             _buildSectionHeader('En Direct', Colors.red),
-            ..._liveMatches.map((match) => _buildMatchCard(match, true)),
+            ..._liveMatches.map(_buildMatchCard),
             const SizedBox(height: 16),
           ],
           if (_upcomingMatches.isNotEmpty) ...[
             _buildSectionHeader('À Venir', Colors.blue),
-            ..._upcomingMatches.map((match) => _buildMatchCard(match, false)),
+            ..._upcomingMatches.map(_buildMatchCard),
           ],
         ],
       ),
@@ -158,195 +221,11 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _buildMatchCard(Match match, bool isLive) {
-    final matchTime = match.fixture.date != null 
-        ? DateFormat('HH:mm').format(DateTime.parse(match.fixture.date!).toLocal())
-        : '--:--';
-
-    return Card(
-      elevation: 2,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-      ),
-      margin: const EdgeInsets.symmetric(vertical: 4),
-      child: InkWell(
-        onTap: () {
-          // TODO: Navigation vers les stats du match
-          print('Match tapped: ${match.teams.home.name} vs ${match.teams.away.name}');
-        },
-        child: Padding(
-          padding: const EdgeInsets.all(12),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _buildMatchHeader(match),
-              const Divider(height: 16),
-              _buildMatchContent(match, matchTime),
-              if (match.league.round != null) ...[
-                const SizedBox(height: 8),
-                _buildRoundInfo(match),
-              ],
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildMatchHeader(Match match) {
-    return Row(
-      children: [
-        Image.network(
-          match.league.logo,
-          width: 24,
-          height: 24,
-          errorBuilder: (_, __, ___) => const Icon(Icons.sports_soccer, size: 24),
-        ),
-        const SizedBox(width: 8),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                match.league.name,
-                style: const TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              Text(
-                Translations.getCountryName(match.league.country),
-                style: TextStyle(
-                  fontSize: 12,
-                  color: Colors.grey.shade600,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildRoundInfo(Match match) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
-      decoration: BoxDecoration(
-        color: Colors.grey.shade100,
-        borderRadius: BorderRadius.circular(4),
-      ),
-      child: Text(
-        Translations.getRoundName(match.league.round ?? ''),
-        style: TextStyle(
-          fontSize: 12,
-          color: Colors.grey.shade700,
-          fontStyle: FontStyle.italic,
-        ),
-        textAlign: TextAlign.center,
-      ),
-    );
-  }
-
-  Widget _buildMatchContent(Match match, String matchTime) {
-    return Row(
-      children: [
-        Expanded(
-          child: _buildTeamInfo(
-            match.teams.home.name,
-            match.teams.home.logo,
-            alignment: TextAlign.end,
-          ),
-        ),
-        const SizedBox(width: 8),
-        _buildScoreSection(match, matchTime),
-        const SizedBox(width: 8),
-        Expanded(
-          child: _buildTeamInfo(
-            match.teams.away.name,
-            match.teams.away.logo,
-            alignment: TextAlign.start,
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildTeamInfo(String name, String logo, {TextAlign? alignment}) {
-    return Row(
-      mainAxisAlignment: alignment == TextAlign.end 
-          ? MainAxisAlignment.end 
-          : MainAxisAlignment.start,
-      children: [
-        if (alignment == TextAlign.end) ...[
-          Flexible(
-            child: Text(
-              name,
-              style: const TextStyle(fontWeight: FontWeight.bold),
-              textAlign: alignment,
-              overflow: TextOverflow.ellipsis,
-            ),
-          ),
-          const SizedBox(width: 8),
-          Image.network(
-            logo,
-            width: 36,
-            height: 36,
-            errorBuilder: (_, __, ___) => const Icon(Icons.sports_soccer),
-          ),
-        ] else ...[
-          Image.network(
-            logo,
-            width: 36,
-            height: 36,
-            errorBuilder: (_, __, ___) => const Icon(Icons.sports_soccer),
-          ),
-          const SizedBox(width: 8),
-          Flexible(
-            child: Text(
-              name,
-              style: const TextStyle(fontWeight: FontWeight.bold),
-              textAlign: alignment,
-              overflow: TextOverflow.ellipsis,
-            ),
-          ),
-        ],
-      ],
-    );
-  }
-
-  Widget _buildScoreSection(Match match, String matchTime) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      decoration: BoxDecoration(
-        color: match.isLive ? Colors.red.withOpacity(0.1) : Colors.grey.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Column(
-        children: [
-          Text(
-            match.isLive
-                ? '${match.goals?.home ?? 0} - ${match.goals?.away ?? 0}'
-                : matchTime,
-            style: TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.bold,
-              color: match.isLive ? Colors.red : Colors.black87,
-            ),
-          ),
-          if (match.isLive) ...[
-            const SizedBox(height: 4),
-            Text(
-              '${match.fixture.status.elapsed ?? 0}\'',
-              style: const TextStyle(
-                fontSize: 12,
-                color: Colors.red,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-          ],
-        ],
-      ),
+  Widget _buildMatchCard(Match match) {
+    return MatchCard(
+      match: match,
+      onStatsTap: () => MatchNavigation.toMatchDetails(context, match),
+      onPredictionTap: () => MatchNavigation.toMatchPredictions(context, match),
     );
   }
 }
